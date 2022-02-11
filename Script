@@ -1,0 +1,313 @@
+#include <WiFi.h> //Lib WiFi
+
+#include <DHT_U.h> //Dht Lib
+
+#include <DHT.h> //Dht lib
+
+#include <Wire.h>
+
+#include <Adafruit_INA219.h> //Ina219 Lib
+
+#include "UbidotsEsp32Mqtt.h" //Ubdots lib
+
+ 
+
+#define DHTPIN 18 //Pino onde o DHT está ligado
+
+#define DHTTYPE    DHT22
+
+ 
+
+#define UBIDOTS_TOKEN  "COLOQUE SEU TOKEN AQUI"     
+
+#define WIFI_SSID  "WIFI SSID"      
+
+#define WIFI_PASS  "SENHA DO WIFI"  
+
+#define DEVICE_LABEL  "NOME DA TUA LABEL NO UBDOTS"  
+
+#define VARIABLE_LABEL_H  "humidity" // VARIÁVEL CRIADA PARA MEDIR A UMIDADE NO UBDOTS
+
+#define VARIABLE_LABEL_T  "temperature" //VARIÁVEL CRIADA PARA MEDIR TEMPERATURA NO UBDOTS
+
+#define VARIABLE_LABEL_C "current_ma" //VARIÁVEL CRIADA PARA MEDIR A CORRENTE NO UBDOTS
+
+#define PUBLISH_FREQUENCY 6000 // publica a cada 6s
+
+#define PUBLISH_FREQUENCY_TEMP 5000 // publica a cada 5s
+
+#define PUBLISH_FREQUENCY_CURR 4000 // publica a cada 4s
+
+
+//Variáveis que vão guardar o valor da temperatura e umidade
+
+float temperature = 0;
+
+float temperatura = 0;
+
+float humidity = 0;
+
+float umidade = 0;
+
+float current_mA = 0;
+
+uint8_t LED = 4;
+
+uint8_t botao = 2;
+
+int16_t timer_temperatura = millis();
+
+int16_t timer_humidade = millis();
+
+int16_t timer_corrente = millis();
+
+bool estado = 0;
+
+Ubidots ubidots(UBIDOTS_TOKEN);
+
+DHT_Unified dht(DHTPIN, DHTTYPE);
+
+ 
+
+uint32_t delayMS = 100;
+
+ 
+
+void callback(char *topic, byte *payload, unsigned int length){
+
+  Serial.print("Message arrived [");
+
+  Serial.print(topic);
+
+  Serial.print("] ");
+
+  for (int i = 0; i < length; i++)
+
+  {
+
+    Serial.print((char)payload[i]);
+
+  }
+
+  Serial.println();
+
+  }
+
+ 
+
+Adafruit_INA219 ina219;
+
+void setup()
+
+{
+
+  Serial.begin(115200);
+
+  pinMode(LED,OUTPUT);
+
+  pinMode(botao,INPUT_PULLUP);
+
+  ubidots.setup();
+
+  
+  ubidots.connectToWifi(WIFI_SSID, WIFI_PASS);
+
+  ubidots.setCallback(callback);
+
+  ubidots.reconnect();
+
+  if (!ina219.begin()) {
+
+    Serial.println("Failed to find INA219 chip");
+
+    while (1) { delay(1000); }
+
+    }
+
+    unsigned long timer;
+
+ 
+
+  dht.begin();
+
+  Serial.println(F("DHTxx Unified Sensor Example"));
+
+  sensor_t sensor;
+
+  dht.temperature().getSensor(&sensor);
+
+  Serial.println(F("------------------------------------"));
+
+  Serial.println(F("Temperature Sensor"));
+
+  Serial.print  (F("Sensor Type: ")); Serial.println(sensor.name);
+
+  Serial.print  (F("Driver Ver:  ")); Serial.println(sensor.version);
+
+  Serial.print  (F("Unique ID:   ")); Serial.println(sensor.sensor_id);
+
+  Serial.print  (F("Max Value:   ")); Serial.print(sensor.max_value); Serial.println(F("°C"));
+
+  Serial.print  (F("Min Value:   ")); Serial.print(sensor.min_value); Serial.println(F("°C"));
+
+  Serial.print  (F("Resolution:  ")); Serial.print(sensor.resolution); Serial.println(F("°C"));
+
+  Serial.println(F("------------------------------------"));
+
+  dht.humidity().getSensor(&sensor);
+
+  Serial.println(F("Humidity Sensor"));
+
+  Serial.print  (F("Sensor Type: ")); Serial.println(sensor.name);
+
+  Serial.print  (F("Driver Ver:  ")); Serial.println(sensor.version);
+
+  Serial.print  (F("Unique ID:   ")); Serial.println(sensor.sensor_id);
+
+  Serial.print  (F("Max Value:   ")); Serial.print(sensor.max_value); Serial.println(F("%"));
+
+  Serial.print  (F("Min Value:   ")); Serial.print(sensor.min_value); Serial.println(F("%"));
+
+  Serial.print  (F("Resolution:  ")); Serial.print(sensor.resolution); Serial.println(F("%"));
+
+  Serial.println(F("------------------------------------"));
+
+  delayMS = sensor.min_delay / 1000;
+
+  timer = millis();
+
+}
+
+ 
+
+void loop()
+
+{
+
+  if(digitalRead(botao))
+
+{
+
+printf("Botao em: %d",botao);
+
+}
+
+  delay(delayMS);
+
+  sensors_event_t event;
+
+  dht.temperature().getEvent(&event);
+
+  temperatura = event.temperature;
+
+ 
+
+  if (isnan(temperatura)) {
+
+    Serial.println(F("Error reading temperature!"));
+
+  }
+
+  else {
+
+    Serial.print(F("Temperature: "));
+
+    Serial.print(temperatura);
+
+    Serial.println(F("°C"));
+
+  }
+
+  dht.humidity().getEvent(&event);
+
+  umidade = event.relative_humidity;
+
+  if (isnan(umidade)) {
+
+    Serial.println(F("Error reading humidity!"));
+
+  }
+
+  else {
+
+    Serial.print(F("Humidity: "));
+
+    Serial.print(umidade);
+
+    Serial.println(F("%"));
+
+  }
+
+  current_mA = ina219.getCurrent_mA();
+
+   Serial.println("Corrente :"+ String(current_mA));
+
+   delay(1000);
+
+    if (!ubidots.connected())
+
+  {
+
+    ubidots.reconnect();
+
+  }
+
+  if (millis() - timer_temperatura > PUBLISH_FREQUENCY_TEMP)
+
+  {
+
+    ubidots.add(VARIABLE_LABEL_T, temperatura);
+
+    ubidots.publish(DEVICE_LABEL);
+
+    timer_temperatura = millis();
+
+ 
+
+  }
+
+  if (!ubidots.connected())
+
+  {
+
+    ubidots.reconnect();
+
+  }
+
+  if (millis() - timer_humidade > PUBLISH_FREQUENCY)
+
+  {
+
+    ubidots.add(VARIABLE_LABEL_H, umidade);
+
+    ubidots.publish(DEVICE_LABEL);
+
+    printf("Estado do Led: %d",estado);
+
+    digitalWrite(LED,estado);
+
+    estado =!estado;
+
+    timer_humidade = millis();
+
+  }
+
+ 
+
+  if (millis() - timer_corrente > PUBLISH_FREQUENCY_CURR)
+
+  {
+
+    ubidots.add(VARIABLE_LABEL_C, current_mA);
+
+    ubidots.publish(DEVICE_LABEL);
+
+    timer_humidade = millis();
+
+  }
+
+ 
+
+  ubidots.loop();  
+
+}
